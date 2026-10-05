@@ -1,0 +1,1796 @@
+==== ClubDeportivo/Datos/ActividadDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de las actividades que ofrece el club.</summary>
+    public class ActividadDAO
+    {
+        private const string SELECT_BASE =
+            "SELECT a.id_actividad, a.nombre, a.tipo, a.costo_no_socio, a.horario, a.cupo_maximo, a.id_profesor, " +
+            "       CONCAT(p.apellido, ', ', p.nombre) AS nombre_profesor " +
+            "FROM actividad a " +
+            "LEFT JOIN profesor pr ON pr.id_profesor = a.id_profesor " +
+            "LEFT JOIN persona p ON p.id_persona = pr.id_persona ";
+
+        private static Actividad Mapear(IDataRecord r) => new Actividad
+        {
+            IdActividad = DbHelper.Int(r, "id_actividad"),
+            Nombre = DbHelper.Str(r, "nombre"),
+            Tipo = DbHelper.Str(r, "tipo"),
+            CostoNoSocio = DbHelper.Decimal(r, "costo_no_socio"),
+            Horario = DbHelper.Str(r, "horario"),
+            CupoMaximo = DbHelper.Int(r, "cupo_maximo"),
+            IdProfesor = DbHelper.IntNull(r, "id_profesor"),
+            NombreProfesor = DbHelper.Str(r, "nombre_profesor")
+        };
+
+        public int Alta(Actividad a)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "INSERT INTO actividad (nombre, tipo, costo_no_socio, horario, cupo_maximo, id_profesor) " +
+                    "VALUES (@nombre,@tipo,@costo,@horario,@cupo,@idprof); SELECT LAST_INSERT_ID();", con);
+                cmd.Parameters.AddWithValue("@nombre", a.Nombre);
+                cmd.Parameters.AddWithValue("@tipo", (object)a.Tipo ?? "");
+                cmd.Parameters.AddWithValue("@costo", a.CostoNoSocio);
+                cmd.Parameters.AddWithValue("@horario", (object)a.Horario ?? "");
+                cmd.Parameters.AddWithValue("@cupo", a.CupoMaximo);
+                cmd.Parameters.AddWithValue("@idprof", (object)a.IdProfesor ?? DBNull.Value);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al dar de alta la actividad: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Modificar(Actividad a)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "UPDATE actividad SET nombre=@nombre, tipo=@tipo, costo_no_socio=@costo, horario=@horario, " +
+                    "cupo_maximo=@cupo, id_profesor=@idprof WHERE id_actividad=@id", con);
+                cmd.Parameters.AddWithValue("@nombre", a.Nombre);
+                cmd.Parameters.AddWithValue("@tipo", (object)a.Tipo ?? "");
+                cmd.Parameters.AddWithValue("@costo", a.CostoNoSocio);
+                cmd.Parameters.AddWithValue("@horario", (object)a.Horario ?? "");
+                cmd.Parameters.AddWithValue("@cupo", a.CupoMaximo);
+                cmd.Parameters.AddWithValue("@idprof", (object)a.IdProfesor ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@id", a.IdActividad);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al modificar la actividad: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Baja(int idActividad)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("DELETE FROM actividad WHERE id_actividad=@id", con);
+                cmd.Parameters.AddWithValue("@id", idActividad);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al eliminar la actividad (verifique que no tenga inscripciones asociadas): " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Actividad> Listar()
+        {
+            var lista = new List<Actividad>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "ORDER BY a.nombre", con);
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) lista.Add(Mapear(r));
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar las actividades: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/AsistenciaProfesorDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de la planilla de asistencia diaria de los profesores.</summary>
+    public class AsistenciaProfesorDAO
+    {
+        public bool YaFirmoHoy(int idProfesor, DateTime fecha)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT COUNT(*) FROM asistencia_profesor WHERE id_profesor=@id AND fecha=@fecha", con);
+                cmd.Parameters.AddWithValue("@id", idProfesor);
+                cmd.Parameters.AddWithValue("@fecha", fecha.Date);
+                return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al verificar la asistencia: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public int Registrar(int idProfesor, DateTime fecha, TimeSpan horaEntrada)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "INSERT INTO asistencia_profesor (id_profesor, fecha, hora_entrada) VALUES (@id,@fecha,@hora); " +
+                    "SELECT LAST_INSERT_ID();", con);
+                cmd.Parameters.AddWithValue("@id", idProfesor);
+                cmd.Parameters.AddWithValue("@fecha", fecha.Date);
+                cmd.Parameters.AddWithValue("@hora", horaEntrada);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al registrar la asistencia: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<AsistenciaProfesor> ListarPorProfesor(int idProfesor)
+        {
+            var lista = new List<AsistenciaProfesor>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_asistencia, id_profesor, fecha, hora_entrada FROM asistencia_profesor " +
+                    "WHERE id_profesor=@id ORDER BY fecha DESC", con);
+                cmd.Parameters.AddWithValue("@id", idProfesor);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        lista.Add(new AsistenciaProfesor
+                        {
+                            IdAsistencia = DbHelper.Int(r, "id_asistencia"),
+                            IdProfesor = DbHelper.Int(r, "id_profesor"),
+                            Fecha = DbHelper.Fecha(r, "fecha"),
+                            HoraEntrada = DbHelper.Hora(r, "hora_entrada")
+                        });
+                    }
+                }
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar la asistencia del profesor: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public DataTable ListarPorFecha(DateTime fecha)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT CONCAT(p.apellido, ', ', p.nombre) AS Profesor, pr.legajo AS Legajo, " +
+                    "       a.fecha AS Fecha, a.hora_entrada AS Hora FROM asistencia_profesor a " +
+                    "JOIN profesor pr ON pr.id_profesor = a.id_profesor " +
+                    "JOIN persona p ON p.id_persona = pr.id_persona " +
+                    "WHERE a.fecha=@fecha ORDER BY a.hora_entrada", con);
+                cmd.Parameters.AddWithValue("@fecha", fecha.Date);
+                var dt = new DataTable();
+                using (var adapter = new MySqlDataAdapter(cmd))
+                    adapter.Fill(dt);
+                return dt;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar la asistencia del día: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/CarnetDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de los carnets entregados a los socios.</summary>
+    public class CarnetDAO
+    {
+        public int Emitir(int idSocio, DateTime fechaEmision, DateTime fechaVencimiento)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "INSERT INTO carnet (id_socio, fecha_emision, fecha_vencimiento) VALUES (@id,@emision,@venc) " +
+                    "ON DUPLICATE KEY UPDATE fecha_emision=@emision, fecha_vencimiento=@venc; SELECT LAST_INSERT_ID();", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                cmd.Parameters.AddWithValue("@emision", fechaEmision);
+                cmd.Parameters.AddWithValue("@venc", fechaVencimiento);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al emitir el carnet: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Carnet> Listar()
+        {
+            var lista = new List<Carnet>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT c.id_carnet, c.id_socio, c.fecha_emision, c.fecha_vencimiento, s.nro_socio, " +
+                    "       CONCAT(p.apellido, ', ', p.nombre) AS titular " +
+                    "FROM carnet c JOIN socio s ON s.id_socio = c.id_socio JOIN persona p ON p.id_persona = s.id_persona " +
+                    "ORDER BY c.fecha_emision DESC", con);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        lista.Add(new Carnet
+                        {
+                            IdCarnet = DbHelper.Int(r, "id_carnet"),
+                            IdSocio = DbHelper.Int(r, "id_socio"),
+                            FechaEmision = DbHelper.Fecha(r, "fecha_emision"),
+                            FechaVencimiento = DbHelper.Fecha(r, "fecha_vencimiento")
+                        });
+                    }
+                }
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los carnets: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/Conexion.cs
+using System;
+using System.IO;
+using System.Data;
+using MySql.Data.MySqlClient;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>
+    /// Clase responsable exclusivamente de abrir y cerrar la conexión a la base de datos MySQL.
+    /// Toda clase DAO de la carpeta "Datos" instancia esta clase para dialogar con "Proyecto".
+    /// </summary>
+    public class Conexion
+    {
+        // Datos de conexión (servidor, puerto, base, usuario, clave).
+        // Se intenta leer primero desde CLUBDEPORTIVO_CONNECTION_STRING o desde el archivo
+        // local "clubdeportivo.connection"; si no existe, se usa esta cadena por defecto.
+        private const string CADENA_POR_DEFECTO =
+            "Server=localhost;Port=3306;Database=Proyecto;Uid=root;Pwd=;SslMode=none;";
+
+        private MySqlConnection conexion;
+
+        private static string ObtenerCadenaConexion()
+        {
+            // Environment variables work consistently on Debian, Windows and containers.
+            var configured = Environment.GetEnvironmentVariable("CLUBDEPORTIVO_CONNECTION_STRING");
+            if (!string.IsNullOrWhiteSpace(configured)) return configured;
+
+            // Optional local deployment setting; it is deliberately not committed.
+            var path = Path.Combine(AppContext.BaseDirectory, "clubdeportivo.connection");
+            if (File.Exists(path))
+            {
+                var fromFile = File.ReadAllText(path).Trim();
+                if (!string.IsNullOrWhiteSpace(fromFile)) return fromFile;
+            }
+            return CADENA_POR_DEFECTO;
+        }
+
+        /// <summary>Abre la conexión a MySQL y la devuelve lista para usar.</summary>
+        public MySqlConnection Abrir()
+        {
+            try
+            {
+                conexion = new MySqlConnection(ObtenerCadenaConexion());
+                conexion.Open();
+                return conexion;
+            }
+            catch (MySqlException ex)
+            {
+                throw new Exception("Error al conectar a la base de datos MySQL: " + ex.Message, ex);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error inesperado al abrir la conexión: " + ex.Message, ex);
+            }
+        }
+
+        /// <summary>Cierra y libera la conexión si estuviera abierta.</summary>
+        public void Cerrar()
+        {
+            try
+            {
+                if (conexion != null && conexion.State == ConnectionState.Open)
+                    conexion.Close();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al cerrar la conexión: " + ex.Message, ex);
+            }
+            finally
+            {
+                conexion?.Dispose();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/ConsultaNutricionDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de los turnos de nutrición (ficha médica / carga de actividad permitida).</summary>
+    public class ConsultaNutricionDAO
+    {
+        private static ConsultaNutricion Mapear(IDataRecord r) => new ConsultaNutricion
+        {
+            IdConsulta = DbHelper.Int(r, "id_consulta"),
+            IdSocio = DbHelper.Int(r, "id_socio"),
+            Fecha = DbHelper.Fecha(r, "fecha"),
+            Hora = DbHelper.Hora(r, "hora"),
+            Turno = DbHelper.Int(r, "turno"),
+            Observaciones = DbHelper.Str(r, "observaciones"),
+            CargaActividadPermitida = DbHelper.Str(r, "carga_actividad_permitida")
+        };
+
+        public int Asignar(ConsultaNutricion c)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "INSERT INTO consulta_nutricion (id_socio, fecha, hora, turno, observaciones, carga_actividad_permitida) " +
+                    "VALUES (@id,@fecha,@hora,@turno,@obs,@carga); SELECT LAST_INSERT_ID();", con);
+                cmd.Parameters.AddWithValue("@id", c.IdSocio);
+                cmd.Parameters.AddWithValue("@fecha", c.Fecha.Date);
+                cmd.Parameters.AddWithValue("@hora", c.Hora);
+                cmd.Parameters.AddWithValue("@turno", c.Turno);
+                cmd.Parameters.AddWithValue("@obs", (object)c.Observaciones ?? "");
+                cmd.Parameters.AddWithValue("@carga", (object)c.CargaActividadPermitida ?? "");
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al asignar el turno de nutrición: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Modificar(ConsultaNutricion c)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "UPDATE consulta_nutricion SET fecha=@fecha, hora=@hora, turno=@turno, observaciones=@obs, " +
+                    "carga_actividad_permitida=@carga WHERE id_consulta=@id", con);
+                cmd.Parameters.AddWithValue("@fecha", c.Fecha.Date);
+                cmd.Parameters.AddWithValue("@hora", c.Hora);
+                cmd.Parameters.AddWithValue("@turno", c.Turno);
+                cmd.Parameters.AddWithValue("@obs", (object)c.Observaciones ?? "");
+                cmd.Parameters.AddWithValue("@carga", (object)c.CargaActividadPermitida ?? "");
+                cmd.Parameters.AddWithValue("@id", c.IdConsulta);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al modificar el turno de nutrición: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Cancelar(int idConsulta)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("DELETE FROM consulta_nutricion WHERE id_consulta=@id", con);
+                cmd.Parameters.AddWithValue("@id", idConsulta);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al cancelar el turno: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<ConsultaNutricion> ListarPorSocio(int idSocio)
+        {
+            var lista = new List<ConsultaNutricion>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_consulta, id_socio, fecha, hora, turno, observaciones, carga_actividad_permitida " +
+                    "FROM consulta_nutricion WHERE id_socio=@id ORDER BY fecha DESC", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) lista.Add(Mapear(r));
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los turnos del socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public int ContarTurnosOcupados(DateTime fecha)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("SELECT COUNT(*) FROM consulta_nutricion WHERE fecha=@fecha", con);
+                cmd.Parameters.AddWithValue("@fecha", fecha.Date);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al contar los turnos: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/CuotaDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de las cuotas mensuales. El cobro y el listado de vencimientos usan stored procedures.</summary>
+    public class CuotaDAO
+    {
+        /// <summary>
+        /// Registra el cobro de la cuota mediante sp_CobrarCuota y devuelve la nueva fecha de vencimiento.
+        /// El nuevo plazo comienza a correr desde el día siguiente al vencimiento anterior (o desde hoy si es el primer pago).
+        /// </summary>
+        public DateTime CobrarCuota(int idSocio, decimal monto, string formaPago, int? cuotasTarjeta)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("sp_CobrarCuota", con) { CommandType = CommandType.StoredProcedure };
+                cmd.Parameters.AddWithValue("p_idsocio", idSocio);
+                cmd.Parameters.AddWithValue("p_monto", monto);
+                cmd.Parameters.AddWithValue("p_formapago", formaPago);
+                cmd.Parameters.AddWithValue("p_cuotastarjeta", (object)cuotasTarjeta ?? DBNull.Value);
+                return Convert.ToDateTime(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al cobrar la cuota: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Cuota> ListarPorSocio(int idSocio)
+        {
+            var lista = new List<Cuota>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_cuota, id_socio, mes, anio, monto, fecha_vencimiento, fecha_pago, forma_pago, cuotas_tarjeta " +
+                    "FROM cuota WHERE id_socio=@id ORDER BY fecha_vencimiento DESC", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        lista.Add(new Cuota
+                        {
+                            IdCuota = DbHelper.Int(r, "id_cuota"),
+                            IdSocio = DbHelper.Int(r, "id_socio"),
+                            Mes = DbHelper.Int(r, "mes"),
+                            Anio = DbHelper.Int(r, "anio"),
+                            Monto = DbHelper.Decimal(r, "monto"),
+                            FechaVencimiento = DbHelper.Fecha(r, "fecha_vencimiento"),
+                            FechaPago = DbHelper.FechaNull(r, "fecha_pago"),
+                            FormaPago = DbHelper.Str(r, "forma_pago"),
+                            CuotasTarjeta = DbHelper.IntNull(r, "cuotas_tarjeta")
+                        });
+                    }
+                }
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar el historial de cuotas: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        /// <summary>Listado diario de vencimientos (requerimiento 3 del enunciado), vía sp_ListarVencimientosDia.</summary>
+        public DataTable ListarVencimientosDia(DateTime fecha)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("sp_ListarVencimientosDia", con) { CommandType = CommandType.StoredProcedure };
+                cmd.Parameters.AddWithValue("p_fecha", fecha.Date);
+                var dt = new DataTable();
+                using (var adapter = new MySqlDataAdapter(cmd))
+                    adapter.Fill(dt);
+                dt.Columns["apellido"].ColumnName = "Apellido";
+                dt.Columns["nombre"].ColumnName = "Nombre";
+                dt.Columns["nro_socio"].ColumnName = "N° Socio";
+                dt.Columns["fecha_vencimiento"].ColumnName = "Vencimiento";
+                dt.Columns["mes"].ColumnName = "Mes";
+                dt.Columns["anio"].ColumnName = "Año";
+                dt.Columns["id_socio"].ColumnName = "IdSocio";
+                return dt;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los vencimientos del día: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/DbHelper.cs
+using System;
+using System.Data;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>
+    /// Utilidades comunes para leer valores de un IDataReader de forma segura frente a NULLs.
+    /// Evita repetir la verificación DBNull en cada DAO.
+    /// </summary>
+    internal static class DbHelper
+    {
+        public static string Str(IDataRecord r, string col)
+            => r[col] == DBNull.Value ? null : r[col].ToString();
+
+        public static int Int(IDataRecord r, string col)
+            => Convert.ToInt32(r[col]);
+
+        public static int? IntNull(IDataRecord r, string col)
+            => r[col] == DBNull.Value ? (int?)null : Convert.ToInt32(r[col]);
+
+        public static decimal Decimal(IDataRecord r, string col)
+            => r[col] == DBNull.Value ? 0m : Convert.ToDecimal(r[col]);
+
+        public static bool Bool(IDataRecord r, string col)
+            => r[col] != DBNull.Value && Convert.ToBoolean(r[col]);
+
+        public static DateTime Fecha(IDataRecord r, string col)
+            => Convert.ToDateTime(r[col]);
+
+        public static DateTime? FechaNull(IDataRecord r, string col)
+            => r[col] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(r[col]);
+
+        public static TimeSpan Hora(IDataRecord r, string col)
+            => (TimeSpan)r[col];
+    }
+}
+==== ClubDeportivo/Datos/InscripcionDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de inscripciones puntuales a actividades (usado principalmente por no socios).</summary>
+    public class InscripcionDAO
+    {
+        public int Alta(Inscripcion i)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "INSERT INTO inscripcion (id_persona, id_actividad, fecha, tipo, apto_fisico, monto_pagado) " +
+                    "VALUES (@idp,@ida,@fecha,@tipo,@apto,@monto); SELECT LAST_INSERT_ID();", con);
+                cmd.Parameters.AddWithValue("@idp", i.IdPersona);
+                cmd.Parameters.AddWithValue("@ida", i.IdActividad);
+                cmd.Parameters.AddWithValue("@fecha", i.Fecha);
+                cmd.Parameters.AddWithValue("@tipo", i.Tipo);
+                cmd.Parameters.AddWithValue("@apto", i.AptoFisico);
+                cmd.Parameters.AddWithValue("@monto", i.MontoPagado);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al registrar la inscripción: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Inscripcion> ListarPorPersona(int idPersona)
+        {
+            var lista = new List<Inscripcion>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_inscripcion, id_persona, id_actividad, fecha, tipo, apto_fisico, monto_pagado " +
+                    "FROM inscripcion WHERE id_persona=@id ORDER BY fecha DESC", con);
+                cmd.Parameters.AddWithValue("@id", idPersona);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        lista.Add(new Inscripcion
+                        {
+                            IdInscripcion = DbHelper.Int(r, "id_inscripcion"),
+                            IdPersona = DbHelper.Int(r, "id_persona"),
+                            IdActividad = DbHelper.Int(r, "id_actividad"),
+                            Fecha = DbHelper.Fecha(r, "fecha"),
+                            Tipo = DbHelper.Str(r, "tipo"),
+                            AptoFisico = DbHelper.Bool(r, "apto_fisico"),
+                            MontoPagado = DbHelper.Decimal(r, "monto_pagado")
+                        });
+                    }
+                }
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar las inscripciones: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/NoSocioDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de personas que no son socias (pagan solo la actividad que realizan).</summary>
+    public class NoSocioDAO
+    {
+        /// <summary>Busca una persona ya registrada como no socio por DNI; devuelve su id_persona o null.</summary>
+        public int? BuscarIdPersonaPorDni(string dni)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("SELECT id_persona FROM persona WHERE dni=@dni", con);
+                cmd.Parameters.AddWithValue("@dni", dni);
+                object res = cmd.ExecuteScalar();
+                return res == null ? (int?)null : Convert.ToInt32(res);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al buscar la persona: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        /// <summary>Crea la persona (si no existía) y su registro de no socio. Devuelve id_persona.</summary>
+        public int Alta(NoSocio n)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                int idPersona;
+
+                var cmdBuscar = new MySqlCommand("SELECT id_persona FROM persona WHERE dni=@dni", con);
+                cmdBuscar.Parameters.AddWithValue("@dni", n.Dni);
+                object existente = cmdBuscar.ExecuteScalar();
+
+                if (existente != null)
+                {
+                    idPersona = Convert.ToInt32(existente);
+                }
+                else
+                {
+                    var cmdIns = new MySqlCommand(
+                        "INSERT INTO persona (nombre, apellido, dni, fecha_nacimiento, telefono, direccion, email) " +
+                        "VALUES (@nombre,@apellido,@dni,@fecnac,@telefono,@direccion,@email); SELECT LAST_INSERT_ID();", con);
+                    cmdIns.Parameters.AddWithValue("@nombre", n.Nombre);
+                    cmdIns.Parameters.AddWithValue("@apellido", n.Apellido);
+                    cmdIns.Parameters.AddWithValue("@dni", n.Dni);
+                    cmdIns.Parameters.AddWithValue("@fecnac", n.FechaNacimiento);
+                    cmdIns.Parameters.AddWithValue("@telefono", (object)n.Telefono ?? "");
+                    cmdIns.Parameters.AddWithValue("@direccion", (object)n.Direccion ?? "");
+                    cmdIns.Parameters.AddWithValue("@email", (object)n.Email ?? "");
+                    idPersona = Convert.ToInt32(cmdIns.ExecuteScalar());
+
+                    var cmdNoSocio = new MySqlCommand("INSERT INTO no_socio (id_persona) VALUES (@idp)", con);
+                    cmdNoSocio.Parameters.AddWithValue("@idp", idPersona);
+                    cmdNoSocio.ExecuteNonQuery();
+                }
+                return idPersona;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al registrar el no socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<NoSocio> Listar()
+        {
+            var lista = new List<NoSocio>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT ns.id_no_socio, p.id_persona, p.nombre, p.apellido, p.dni, p.fecha_nacimiento, " +
+                    "       p.telefono, p.direccion, p.email, " +
+                    "       MAX(i.fecha) AS ultima_visita, " +
+                    "       (SELECT a.nombre FROM inscripcion i2 JOIN actividad a ON a.id_actividad = i2.id_actividad " +
+                    "        WHERE i2.id_persona = p.id_persona ORDER BY i2.fecha DESC LIMIT 1) AS actividad, " +
+                    "       (SELECT i3.monto_pagado FROM inscripcion i3 WHERE i3.id_persona = p.id_persona " +
+                    "        ORDER BY i3.fecha DESC LIMIT 1) AS monto " +
+                    "FROM no_socio ns " +
+                    "JOIN persona p ON p.id_persona = ns.id_persona " +
+                    "LEFT JOIN inscripcion i ON i.id_persona = p.id_persona " +
+                    "GROUP BY ns.id_no_socio, p.id_persona, p.nombre, p.apellido, p.dni, p.fecha_nacimiento, " +
+                    "         p.telefono, p.direccion, p.email " +
+                    "ORDER BY p.apellido, p.nombre", con);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        lista.Add(new NoSocio
+                        {
+                            IdNoSocio = DbHelper.Int(r, "id_no_socio"),
+                            Id = DbHelper.Int(r, "id_persona"),
+                            Nombre = DbHelper.Str(r, "nombre"),
+                            Apellido = DbHelper.Str(r, "apellido"),
+                            Dni = DbHelper.Str(r, "dni"),
+                            FechaNacimiento = DbHelper.Fecha(r, "fecha_nacimiento"),
+                            Telefono = DbHelper.Str(r, "telefono"),
+                            Direccion = DbHelper.Str(r, "direccion"),
+                            Email = DbHelper.Str(r, "email"),
+                            FechaVisita = DbHelper.FechaNull(r, "ultima_visita") ?? DateTime.MinValue,
+                            ActividadRealizada = DbHelper.Str(r, "actividad"),
+                            MontoPagado = DbHelper.Decimal(r, "monto")
+                        });
+                    }
+                }
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los no socios: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/ProfesorDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos del plantel de profesores (titulares y suplentes).</summary>
+    public class ProfesorDAO
+    {
+        private const string SELECT_BASE =
+            "SELECT pr.id_profesor, p.id_persona, p.nombre, p.apellido, p.dni, p.fecha_nacimiento, " +
+            "       p.telefono, p.direccion, p.email, pr.legajo, pr.especialidad, pr.tipo, pr.horarios_asignados " +
+            "FROM profesor pr JOIN persona p ON p.id_persona = pr.id_persona ";
+
+        private static Profesor Mapear(IDataRecord r) => new Profesor
+        {
+            IdProfesor = DbHelper.Int(r, "id_profesor"),
+            Id = DbHelper.Int(r, "id_persona"),
+            Nombre = DbHelper.Str(r, "nombre"),
+            Apellido = DbHelper.Str(r, "apellido"),
+            Dni = DbHelper.Str(r, "dni"),
+            FechaNacimiento = DbHelper.Fecha(r, "fecha_nacimiento"),
+            Telefono = DbHelper.Str(r, "telefono"),
+            Direccion = DbHelper.Str(r, "direccion"),
+            Email = DbHelper.Str(r, "email"),
+            Legajo = DbHelper.Str(r, "legajo"),
+            Especialidad = DbHelper.Str(r, "especialidad"),
+            Tipo = DbHelper.Str(r, "tipo"),
+            HorariosAsignados = DbHelper.Str(r, "horarios_asignados")
+        };
+
+        public int Alta(Profesor p)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var tx = con.BeginTransaction();
+                try
+                {
+                    var cmdP = new MySqlCommand(
+                        "INSERT INTO persona (nombre, apellido, dni, fecha_nacimiento, telefono, direccion, email) " +
+                        "VALUES (@nombre,@apellido,@dni,@fecnac,@telefono,@direccion,@email); SELECT LAST_INSERT_ID();", con, tx);
+                    cmdP.Parameters.AddWithValue("@nombre", p.Nombre);
+                    cmdP.Parameters.AddWithValue("@apellido", p.Apellido);
+                    cmdP.Parameters.AddWithValue("@dni", p.Dni);
+                    cmdP.Parameters.AddWithValue("@fecnac", p.FechaNacimiento);
+                    cmdP.Parameters.AddWithValue("@telefono", (object)p.Telefono ?? "");
+                    cmdP.Parameters.AddWithValue("@direccion", (object)p.Direccion ?? "");
+                    cmdP.Parameters.AddWithValue("@email", (object)p.Email ?? "");
+                    int idPersona = Convert.ToInt32(cmdP.ExecuteScalar());
+
+                    var cmdPr = new MySqlCommand(
+                        "INSERT INTO profesor (id_persona, legajo, especialidad, tipo, horarios_asignados) " +
+                        "VALUES (@idp,@legajo,@especialidad,@tipo,@horarios); SELECT LAST_INSERT_ID();", con, tx);
+                    cmdPr.Parameters.AddWithValue("@idp", idPersona);
+                    cmdPr.Parameters.AddWithValue("@legajo", p.Legajo);
+                    cmdPr.Parameters.AddWithValue("@especialidad", (object)p.Especialidad ?? "");
+                    cmdPr.Parameters.AddWithValue("@tipo", p.Tipo);
+                    cmdPr.Parameters.AddWithValue("@horarios", (object)p.HorariosAsignados ?? "");
+                    int idProfesor = Convert.ToInt32(cmdPr.ExecuteScalar());
+                    tx.Commit();
+                    return idProfesor;
+                }
+                catch { tx.Rollback(); throw; }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al dar de alta al profesor: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Modificar(Profesor p)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var tx = con.BeginTransaction();
+                try
+                {
+                    var cmdP = new MySqlCommand(
+                        "UPDATE persona SET nombre=@nombre, apellido=@apellido, dni=@dni, fecha_nacimiento=@fecnac, " +
+                        "telefono=@telefono, direccion=@direccion, email=@email WHERE id_persona=@idpersona", con, tx);
+                    cmdP.Parameters.AddWithValue("@nombre", p.Nombre);
+                    cmdP.Parameters.AddWithValue("@apellido", p.Apellido);
+                    cmdP.Parameters.AddWithValue("@dni", p.Dni);
+                    cmdP.Parameters.AddWithValue("@fecnac", p.FechaNacimiento);
+                    cmdP.Parameters.AddWithValue("@telefono", (object)p.Telefono ?? "");
+                    cmdP.Parameters.AddWithValue("@direccion", (object)p.Direccion ?? "");
+                    cmdP.Parameters.AddWithValue("@email", (object)p.Email ?? "");
+                    cmdP.Parameters.AddWithValue("@idpersona", p.Id);
+                    cmdP.ExecuteNonQuery();
+
+                    var cmdPr = new MySqlCommand(
+                        "UPDATE profesor SET legajo=@legajo, especialidad=@especialidad, tipo=@tipo, " +
+                        "horarios_asignados=@horarios WHERE id_profesor=@idprofesor", con, tx);
+                    cmdPr.Parameters.AddWithValue("@legajo", p.Legajo);
+                    cmdPr.Parameters.AddWithValue("@especialidad", (object)p.Especialidad ?? "");
+                    cmdPr.Parameters.AddWithValue("@tipo", p.Tipo);
+                    cmdPr.Parameters.AddWithValue("@horarios", (object)p.HorariosAsignados ?? "");
+                    cmdPr.Parameters.AddWithValue("@idprofesor", p.IdProfesor);
+                    cmdPr.ExecuteNonQuery();
+                    tx.Commit();
+                }
+                catch { tx.Rollback(); throw; }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al modificar el profesor: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Baja(int idProfesor)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("DELETE FROM profesor WHERE id_profesor=@id", con);
+                cmd.Parameters.AddWithValue("@id", idProfesor);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al dar de baja al profesor (verifique que no tenga actividades, rutinas o sueldos asociados): " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public Profesor BuscarPorId(int idProfesor)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "WHERE pr.id_profesor=@id", con);
+                cmd.Parameters.AddWithValue("@id", idProfesor);
+                using (var r = cmd.ExecuteReader())
+                    return r.Read() ? Mapear(r) : null;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al buscar el profesor: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Profesor> Listar()
+        {
+            var lista = new List<Profesor>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "ORDER BY p.apellido, p.nombre", con);
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) lista.Add(Mapear(r));
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los profesores: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Profesor> ListarSuplentes()
+        {
+            var lista = new List<Profesor>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "WHERE pr.tipo='Suplente' ORDER BY p.apellido, p.nombre", con);
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) lista.Add(Mapear(r));
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los suplentes: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/ReporteDAO.cs
+using System;
+using System.Data;
+using MySql.Data.MySqlClient;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Consultas de solo lectura para el módulo de Reportes (frmReportes).</summary>
+    public class ReporteDAO
+    {
+        private DataTable Ejecutar(string sql, params MySqlParameter[] parametros)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(sql, con);
+                if (parametros != null) cmd.Parameters.AddRange(parametros);
+                var dt = new DataTable();
+                using (var adapter = new MySqlDataAdapter(cmd))
+                    adapter.Fill(dt);
+                return dt;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al generar el reporte: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public DataTable SociosPorEstado(string estado) => Ejecutar(
+            "SELECT s.nro_socio AS 'N° Socio', p.apellido AS Apellido, p.nombre AS Nombre, " +
+            "       s.fecha_alta AS 'Fecha alta', s.estado AS Estado " +
+            "FROM socio s JOIN persona p ON p.id_persona = s.id_persona " +
+            "WHERE s.estado = @estado ORDER BY p.apellido",
+            new MySqlParameter("@estado", estado));
+
+        public DataTable RecaudacionDelMes(int mes, int anio) => Ejecutar(
+            "SELECT p.apellido AS Apellido, p.nombre AS Nombre, c.forma_pago AS 'Forma de pago', " +
+            "       c.cuotas_tarjeta AS Cuotas, c.monto AS Monto, c.fecha_pago AS 'Fecha de pago' " +
+            "FROM cuota c JOIN socio s ON s.id_socio = c.id_socio JOIN persona p ON p.id_persona = s.id_persona " +
+            "WHERE MONTH(c.fecha_pago) = @mes AND YEAR(c.fecha_pago) = @anio " +
+            "ORDER BY c.fecha_pago",
+            new MySqlParameter("@mes", mes), new MySqlParameter("@anio", anio));
+
+        public DataTable CarnetsEmitidos() => Ejecutar(
+            "SELECT s.nro_socio AS 'N° Socio', p.apellido AS Apellido, p.nombre AS Nombre, " +
+            "       c.fecha_emision AS Emisión, c.fecha_vencimiento AS Vencimiento " +
+            "FROM carnet c JOIN socio s ON s.id_socio = c.id_socio JOIN persona p ON p.id_persona = s.id_persona " +
+            "ORDER BY c.fecha_emision DESC");
+
+        public DataTable ActividadesConCupo() => Ejecutar(
+            "SELECT a.nombre AS Actividad, a.cupo_maximo AS 'Cupo máximo', " +
+            "       (SELECT COUNT(*) FROM inscripcion i WHERE i.id_actividad = a.id_actividad) AS Inscriptos, " +
+            "       CONCAT(p.apellido, ', ', p.nombre) AS Profesor " +
+            "FROM actividad a LEFT JOIN profesor pr ON pr.id_profesor = a.id_profesor " +
+            "LEFT JOIN persona p ON p.id_persona = pr.id_persona ORDER BY a.nombre");
+    }
+}
+==== ClubDeportivo/Datos/RutinaDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de las rutinas que los profesores confeccionan para sus alumnos.</summary>
+    public class RutinaDAO
+    {
+        private static Rutina Mapear(IDataRecord r) => new Rutina
+        {
+            IdRutina = DbHelper.Int(r, "id_rutina"),
+            IdProfesor = DbHelper.Int(r, "id_profesor"),
+            IdSocio = DbHelper.Int(r, "id_socio"),
+            Descripcion = DbHelper.Str(r, "descripcion"),
+            Fecha = DbHelper.Fecha(r, "fecha")
+        };
+
+        public int Alta(Rutina rt)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "INSERT INTO rutina (id_profesor, id_socio, descripcion, fecha) VALUES (@idp,@ids,@desc,@fecha); " +
+                    "SELECT LAST_INSERT_ID();", con);
+                cmd.Parameters.AddWithValue("@idp", rt.IdProfesor);
+                cmd.Parameters.AddWithValue("@ids", rt.IdSocio);
+                cmd.Parameters.AddWithValue("@desc", rt.Descripcion);
+                cmd.Parameters.AddWithValue("@fecha", rt.Fecha);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al registrar la rutina: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Modificar(Rutina rt)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "UPDATE rutina SET descripcion=@desc, fecha=@fecha WHERE id_rutina=@id", con);
+                cmd.Parameters.AddWithValue("@desc", rt.Descripcion);
+                cmd.Parameters.AddWithValue("@fecha", rt.Fecha);
+                cmd.Parameters.AddWithValue("@id", rt.IdRutina);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al modificar la rutina: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Baja(int idRutina)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("DELETE FROM rutina WHERE id_rutina=@id", con);
+                cmd.Parameters.AddWithValue("@id", idRutina);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al eliminar la rutina: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Rutina> ListarPorSocio(int idSocio)
+        {
+            var lista = new List<Rutina>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_rutina, id_profesor, id_socio, descripcion, fecha FROM rutina " +
+                    "WHERE id_socio=@id ORDER BY fecha DESC", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) lista.Add(Mapear(r));
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar las rutinas del socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Rutina> ListarPorProfesor(int idProfesor)
+        {
+            var lista = new List<Rutina>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_rutina, id_profesor, id_socio, descripcion, fecha FROM rutina " +
+                    "WHERE id_profesor=@id ORDER BY fecha DESC", con);
+                cmd.Parameters.AddWithValue("@id", idProfesor);
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) lista.Add(Mapear(r));
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar las rutinas del profesor: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/SocioDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de la tabla socio (y persona asociada). Todas las consultas parametrizadas.</summary>
+    public class SocioDAO
+    {
+        private const string SELECT_BASE =
+            "SELECT s.id_socio, p.id_persona, p.nombre, p.apellido, p.dni, p.fecha_nacimiento, " +
+            "       p.telefono, p.direccion, p.email, s.nro_socio, s.fecha_alta, s.apto_fisico, " +
+            "       s.estado, s.carnet_entregado " +
+            "FROM socio s JOIN persona p ON p.id_persona = s.id_persona ";
+
+        private static Socio Mapear(IDataRecord r) => new Socio
+        {
+            IdSocio = DbHelper.Int(r, "id_socio"),
+            Id = DbHelper.Int(r, "id_persona"),
+            Nombre = DbHelper.Str(r, "nombre"),
+            Apellido = DbHelper.Str(r, "apellido"),
+            Dni = DbHelper.Str(r, "dni"),
+            FechaNacimiento = DbHelper.Fecha(r, "fecha_nacimiento"),
+            Telefono = DbHelper.Str(r, "telefono"),
+            Direccion = DbHelper.Str(r, "direccion"),
+            Email = DbHelper.Str(r, "email"),
+            NroSocio = DbHelper.Str(r, "nro_socio"),
+            FechaAlta = DbHelper.Fecha(r, "fecha_alta"),
+            AptoFisico = DbHelper.Bool(r, "apto_fisico"),
+            Estado = DbHelper.Str(r, "estado"),
+            CarnetEntregado = DbHelper.Bool(r, "carnet_entregado")
+        };
+
+        /// <summary>Alta de socio (crea persona + socio) mediante stored procedure. Devuelve el id_socio generado.</summary>
+        public int Alta(Socio s)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("sp_AltaSocio", con) { CommandType = CommandType.StoredProcedure };
+                cmd.Parameters.AddWithValue("p_nombre", s.Nombre);
+                cmd.Parameters.AddWithValue("p_apellido", s.Apellido);
+                cmd.Parameters.AddWithValue("p_dni", s.Dni);
+                cmd.Parameters.AddWithValue("p_fecnac", s.FechaNacimiento);
+                cmd.Parameters.AddWithValue("p_telefono", (object)s.Telefono ?? "");
+                cmd.Parameters.AddWithValue("p_direccion", (object)s.Direccion ?? "");
+                cmd.Parameters.AddWithValue("p_email", (object)s.Email ?? "");
+                cmd.Parameters.AddWithValue("p_nrosocio", s.NroSocio);
+                cmd.Parameters.AddWithValue("p_aptofisico", s.AptoFisico);
+
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al dar de alta al socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void Modificar(Socio s)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var tx = con.BeginTransaction();
+                try
+                {
+                    var cmdP = new MySqlCommand(
+                        "UPDATE persona SET nombre=@nombre, apellido=@apellido, dni=@dni, fecha_nacimiento=@fecnac, " +
+                        "telefono=@telefono, direccion=@direccion, email=@email WHERE id_persona=@idpersona", con, tx);
+                    cmdP.Parameters.AddWithValue("@nombre", s.Nombre);
+                    cmdP.Parameters.AddWithValue("@apellido", s.Apellido);
+                    cmdP.Parameters.AddWithValue("@dni", s.Dni);
+                    cmdP.Parameters.AddWithValue("@fecnac", s.FechaNacimiento);
+                    cmdP.Parameters.AddWithValue("@telefono", (object)s.Telefono ?? "");
+                    cmdP.Parameters.AddWithValue("@direccion", (object)s.Direccion ?? "");
+                    cmdP.Parameters.AddWithValue("@email", (object)s.Email ?? "");
+                    cmdP.Parameters.AddWithValue("@idpersona", s.Id);
+                    cmdP.ExecuteNonQuery();
+
+                    var cmdS = new MySqlCommand(
+                        "UPDATE socio SET nro_socio=@nro, apto_fisico=@apto, estado=@estado, carnet_entregado=@carnet " +
+                        "WHERE id_socio=@idsocio", con, tx);
+                    cmdS.Parameters.AddWithValue("@nro", s.NroSocio);
+                    cmdS.Parameters.AddWithValue("@apto", s.AptoFisico);
+                    cmdS.Parameters.AddWithValue("@estado", s.Estado);
+                    cmdS.Parameters.AddWithValue("@carnet", s.CarnetEntregado);
+                    cmdS.Parameters.AddWithValue("@idsocio", s.IdSocio);
+                    cmdS.ExecuteNonQuery();
+                    tx.Commit();
+                }
+                catch { tx.Rollback(); throw; }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al modificar el socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        /// <summary>Baja lógica: el socio pasa a estado Inactivo (no se elimina el historial).</summary>
+        public void Baja(int idSocio)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("UPDATE socio SET estado='Inactivo' WHERE id_socio=@id", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al dar de baja al socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public void MarcarCarnetEntregado(int idSocio)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("UPDATE socio SET carnet_entregado=1 WHERE id_socio=@id", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al actualizar la entrega del carnet: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public Socio BuscarPorId(int idSocio)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "WHERE s.id_socio=@id", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                using (var r = cmd.ExecuteReader())
+                    return r.Read() ? Mapear(r) : null;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al buscar el socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public Socio BuscarPorNroSocio(string nroSocio)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "WHERE s.nro_socio=@nro", con);
+                cmd.Parameters.AddWithValue("@nro", nroSocio);
+                using (var r = cmd.ExecuteReader())
+                    return r.Read() ? Mapear(r) : null;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al buscar el socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public Socio BuscarPorDni(string dni)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "WHERE p.dni=@dni", con);
+                cmd.Parameters.AddWithValue("@dni", dni);
+                using (var r = cmd.ExecuteReader())
+                    return r.Read() ? Mapear(r) : null;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al buscar el socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Socio> Listar()
+        {
+            var lista = new List<Socio>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(SELECT_BASE + "ORDER BY p.apellido, p.nombre", con);
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read()) lista.Add(Mapear(r));
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los socios: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        /// <summary>Fecha de vencimiento de la última cuota abonada por el socio (null si nunca pagó).</summary>
+        public DateTime? ObtenerUltimoVencimiento(int idSocio)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT MAX(fecha_vencimiento) FROM cuota WHERE id_socio=@id AND fecha_pago IS NOT NULL", con);
+                cmd.Parameters.AddWithValue("@id", idSocio);
+                object res = cmd.ExecuteScalar();
+                return res == null || res == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(res);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al consultar el vencimiento del socio: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/SueldoDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de las liquidaciones de sueldo de los profesores.</summary>
+    public class SueldoDAO
+    {
+        /// <summary>Liquida (o actualiza) el sueldo del período mediante sp_LiquidarSueldo.</summary>
+        public void Liquidar(int idProfesor, int mes, int anio, decimal monto)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand("sp_LiquidarSueldo", con) { CommandType = CommandType.StoredProcedure };
+                cmd.Parameters.AddWithValue("p_idprofesor", idProfesor);
+                cmd.Parameters.AddWithValue("p_mes", mes);
+                cmd.Parameters.AddWithValue("p_anio", anio);
+                cmd.Parameters.AddWithValue("p_monto", monto);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al liquidar el sueldo: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Sueldo> ListarPorProfesor(int idProfesor)
+        {
+            var lista = new List<Sueldo>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_sueldo, id_profesor, mes, anio, monto, fecha_pago FROM sueldo " +
+                    "WHERE id_profesor=@id ORDER BY anio DESC, mes DESC", con);
+                cmd.Parameters.AddWithValue("@id", idProfesor);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        lista.Add(new Sueldo
+                        {
+                            IdSueldo = DbHelper.Int(r, "id_sueldo"),
+                            IdProfesor = DbHelper.Int(r, "id_profesor"),
+                            Mes = DbHelper.Int(r, "mes"),
+                            Anio = DbHelper.Int(r, "anio"),
+                            Monto = DbHelper.Decimal(r, "monto"),
+                            FechaPago = DbHelper.FechaNull(r, "fecha_pago")
+                        });
+                    }
+                }
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los sueldos del profesor: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public DataTable ListarPorPeriodo(int mes, int anio)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT CONCAT(p.apellido, ', ', p.nombre) AS Profesor, pr.legajo AS Legajo, " +
+                    "       s.monto AS Monto, s.fecha_pago AS FechaDePago FROM sueldo s " +
+                    "JOIN profesor pr ON pr.id_profesor = s.id_profesor " +
+                    "JOIN persona p ON p.id_persona = pr.id_persona " +
+                    "WHERE s.mes=@mes AND s.anio=@anio ORDER BY p.apellido", con);
+                cmd.Parameters.AddWithValue("@mes", mes);
+                cmd.Parameters.AddWithValue("@anio", anio);
+                var dt = new DataTable();
+                using (var adapter = new MySqlDataAdapter(cmd))
+                    adapter.Fill(dt);
+                return dt;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los sueldos del período: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}
+==== ClubDeportivo/Datos/UsuarioDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using MySql.Data.MySqlClient;
+using ClubDeportivo.Entidades;
+
+namespace ClubDeportivo.Datos
+{
+    /// <summary>Acceso a datos de usuarios del sistema (login y control de acceso por rol).</summary>
+    public class UsuarioDAO
+    {
+        /// <summary>Devuelve el usuario si nombreUsuario/contrasenaHash coinciden y está activo; null en caso contrario.</summary>
+        public Usuario Autenticar(string nombreUsuario, string contrasenaHash)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_usuario, nombre_usuario, contrasena_hash, rol, id_persona, activo FROM usuario " +
+                    "WHERE nombre_usuario=@user AND contrasena_hash=@hash AND activo=1", con);
+                cmd.Parameters.AddWithValue("@user", nombreUsuario);
+                cmd.Parameters.AddWithValue("@hash", contrasenaHash);
+                using (var r = cmd.ExecuteReader())
+                {
+                    if (!r.Read()) return null;
+                    return new Usuario
+                    {
+                        IdUsuario = DbHelper.Int(r, "id_usuario"),
+                        NombreUsuario = DbHelper.Str(r, "nombre_usuario"),
+                        ContrasenaHash = DbHelper.Str(r, "contrasena_hash"),
+                        Rol = DbHelper.Str(r, "rol"),
+                        IdPersona = DbHelper.IntNull(r, "id_persona"),
+                        Activo = DbHelper.Bool(r, "activo")
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al validar las credenciales: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public int Alta(Usuario u)
+        {
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "INSERT INTO usuario (nombre_usuario, contrasena_hash, rol, id_persona, activo) " +
+                    "VALUES (@user,@hash,@rol,@idpersona,1); SELECT LAST_INSERT_ID();", con);
+                cmd.Parameters.AddWithValue("@user", u.NombreUsuario);
+                cmd.Parameters.AddWithValue("@hash", u.ContrasenaHash);
+                cmd.Parameters.AddWithValue("@rol", u.Rol);
+                cmd.Parameters.AddWithValue("@idpersona", (object)u.IdPersona ?? DBNull.Value);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al crear el usuario: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+
+        public List<Usuario> Listar()
+        {
+            var lista = new List<Usuario>();
+            var cn = new Conexion();
+            try
+            {
+                var con = cn.Abrir();
+                var cmd = new MySqlCommand(
+                    "SELECT id_usuario, nombre_usuario, contrasena_hash, rol, id_persona, activo FROM usuario ORDER BY nombre_usuario", con);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        lista.Add(new Usuario
+                        {
+                            IdUsuario = DbHelper.Int(r, "id_usuario"),
+                            NombreUsuario = DbHelper.Str(r, "nombre_usuario"),
+                            ContrasenaHash = DbHelper.Str(r, "contrasena_hash"),
+                            Rol = DbHelper.Str(r, "rol"),
+                            IdPersona = DbHelper.IntNull(r, "id_persona"),
+                            Activo = DbHelper.Bool(r, "activo")
+                        });
+                    }
+                }
+                return lista;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Error al listar los usuarios: " + ex.Message, ex);
+            }
+            finally
+            {
+                cn.Cerrar();
+            }
+        }
+    }
+}

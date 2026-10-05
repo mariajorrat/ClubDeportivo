@@ -1,0 +1,23 @@
+PROYECTO INTEGRADOR - SISTEMA DE ADMINISTRACION DE UN CLUB DEPORTIVO
+=====================================================================
+
+COMO ABRIRLO (Visual Studio 2019 o superior):
+
+1. Doble clic en ClubDeportivo/ClubDeportivo.sln
+
+2. Si pide restaurar paquetes NuGet (MySql.Data), aceptar.
+
+3. En el Explorador de Soluciones, doble clic en cualquier frmX.cs para verlo.
+
+4. Ejecutar proyecto_club.sql en MySQL antes de F5.
+----------------------------------------------
+
+Usuarios de prueba: 
+
+admin/admin123 (Administrador), 
+
+recepcion/recep123 (Recepcionista),
+
+profesor1/prof123 (Profesor), 
+
+nutricionista1/nutri123 (Nutricionista)

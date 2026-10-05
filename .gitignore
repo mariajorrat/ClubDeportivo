@@ -1,0 +1,10 @@
+# Visual Studio / .NET
+.vs/
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+packages/
+
+# Archivos temporales de Office
+~$*
