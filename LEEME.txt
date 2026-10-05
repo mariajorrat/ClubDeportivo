@@ -12,12 +12,5 @@ COMO ABRIRLO (Visual Studio 2019 o superior):
 4. Ejecutar proyecto_club.sql en MySQL antes de F5.
 ----------------------------------------------
 
-Usuarios de prueba: 
-
-admin/admin123 (Administrador), 
-
-recepcion/recep123 (Recepcionista),
-
-profesor1/prof123 (Profesor), 
-
-nutricionista1/nutri123 (Nutricionista)
+No se incluyen usuarios ni contraseñas predeterminadas.
+Crear el primer administrador mediante el flujo seguro de alta de usuarios.

@@ -16,11 +16,4 @@ CREATE TABLE IF NOT EXISTS consulta_nutricion (id_consulta INTEGER PRIMARY KEY A
 CREATE TABLE IF NOT EXISTS rutina (id_rutina INTEGER PRIMARY KEY AUTOINCREMENT, id_profesor INTEGER NOT NULL, id_socio INTEGER NOT NULL, descripcion TEXT, fecha TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sueldo (id_sueldo INTEGER PRIMARY KEY AUTOINCREMENT, id_profesor INTEGER NOT NULL, mes INTEGER NOT NULL, anio INTEGER NOT NULL, monto REAL NOT NULL, fecha_pago TEXT);
 
--- Password is SHA-256("admin123").
-INSERT OR IGNORE INTO usuario (nombre_usuario, contrasena_hash, rol, activo)
-VALUES ('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Administrador', 1);
-INSERT OR IGNORE INTO persona (nombre, apellido, dni, fecha_nacimiento, telefono, direccion, email)
-VALUES ('Administrador', 'Sistema', '00000000', '1990-01-01', '', '', 'admin@club.local');
-INSERT OR IGNORE INTO profesor (id_persona, legajo, especialidad, tipo)
-SELECT id_persona, 'ADM-001', 'Administración', 'Titular' FROM persona WHERE dni = '00000000'
-AND NOT EXISTS (SELECT 1 FROM profesor WHERE legajo = 'ADM-001');
+-- Create the first administrator through the application's secure setup flow.

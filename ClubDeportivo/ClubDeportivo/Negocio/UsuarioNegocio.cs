@@ -1,6 +1,5 @@
 using System;
 using System.Security.Cryptography;
-using System.Text;
 using ClubDeportivo.Datos;
 using ClubDeportivo.Entidades;
 
@@ -11,15 +10,37 @@ namespace ClubDeportivo.Negocio
     {
         private readonly UsuarioDAO dao = new UsuarioDAO();
 
-        /// <summary>Calcula el hash SHA-256 de un texto plano (nunca se guarda ni compara la contraseña en claro).</summary>
+        private const int SaltSize = 16;
+        private const int HashSize = 32;
+        private const int Iterations = 600_000;
+
+        /// <summary>Genera un hash PBKDF2 con salt aleatorio para almacenar contraseñas.</summary>
         public static string Hash(string textoPlano)
         {
-            using (var sha256 = SHA256.Create())
+            byte[] salt = RandomNumberGenerator.GetBytes(SaltSize);
+            byte[] hash = Rfc2898DeriveBytes.Pbkdf2(textoPlano ?? string.Empty, salt, Iterations,
+                HashAlgorithmName.SHA256, HashSize);
+            return $"pbkdf2-sha256${Iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+        }
+
+        private static bool VerificarHash(string textoPlano, string almacenado)
+        {
+            string[] partes = almacenado.Split('$');
+            if (partes.Length != 4 || partes[0] != "pbkdf2-sha256" ||
+                !int.TryParse(partes[1], out int iterations))
+                return false;
+
+            try
             {
-                byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(textoPlano ?? string.Empty));
-                var sb = new StringBuilder();
-                foreach (byte b in bytes) sb.Append(b.ToString("x2"));
-                return sb.ToString();
+                byte[] salt = Convert.FromBase64String(partes[2]);
+                byte[] esperado = Convert.FromBase64String(partes[3]);
+                byte[] actual = Rfc2898DeriveBytes.Pbkdf2(textoPlano ?? string.Empty, salt, iterations,
+                    HashAlgorithmName.SHA256, esperado.Length);
+                return CryptographicOperations.FixedTimeEquals(actual, esperado);
+            }
+            catch (FormatException)
+            {
+                return false;
             }
         }
 
@@ -28,7 +49,10 @@ namespace ClubDeportivo.Negocio
         {
             if (string.IsNullOrWhiteSpace(nombreUsuario) || string.IsNullOrWhiteSpace(contrasenaPlana))
                 return null;
-            return dao.Autenticar(nombreUsuario, Hash(contrasenaPlana));
+            Usuario usuario = dao.BuscarActivo(nombreUsuario);
+            return usuario is not null && VerificarHash(contrasenaPlana, usuario.ContrasenaHash)
+                ? usuario
+                : null;
         }
 
         public int AltaUsuario(string nombreUsuario, string contrasenaPlana, string rol, int? idPersona)

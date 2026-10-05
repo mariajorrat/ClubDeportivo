@@ -9,8 +9,8 @@ namespace ClubDeportivo.Datos
     /// <summary>Acceso a datos de usuarios del sistema (login y control de acceso por rol).</summary>
     public class UsuarioDAO
     {
-        /// <summary>Devuelve el usuario si nombreUsuario/contrasenaHash coinciden y está activo; null en caso contrario.</summary>
-        public Usuario Autenticar(string nombreUsuario, string contrasenaHash)
+        /// <summary>Devuelve el usuario activo por nombre para que la capa de negocio verifique su contraseña.</summary>
+        public Usuario BuscarActivo(string nombreUsuario)
         {
             var cn = new Conexion();
             try
@@ -18,9 +18,8 @@ namespace ClubDeportivo.Datos
                 var con = cn.Abrir();
                 var cmd = new SqliteCommand(
                     "SELECT id_usuario, nombre_usuario, contrasena_hash, rol, id_persona, activo FROM usuario " +
-                    "WHERE nombre_usuario=@user AND contrasena_hash=@hash AND activo=1", con);
+                "WHERE nombre_usuario=@user AND activo=1", con);
                 cmd.Parameters.AddWithValue("@user", nombreUsuario);
-                cmd.Parameters.AddWithValue("@hash", contrasenaHash);
                 using (var r = cmd.ExecuteReader())
                 {
                     if (!r.Read()) return null;

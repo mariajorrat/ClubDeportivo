@@ -13,7 +13,7 @@
 **Antes de grabar**
 - Levantar MySQL y correr `proyecto_club.sql` (deja cargados los usuarios de prueba).
 - Abrir `ClubDeportivo.sln` en Visual Studio y compilar una vez (F5) antes de grabar, para que no se vean errores de restauración de paquetes en cámara.
-- Tener a mano los usuarios de prueba: `admin/admin123`, `recepcion/recep123`, `profesor1/prof123`, `nutricionista1/nutri123`.
+- Crear previamente un usuario de demostración local con una contraseña temporal que no se publique ni se reutilice.
 - Decidir quién comparte pantalla en el bloque 3 (demo).
 
 ---

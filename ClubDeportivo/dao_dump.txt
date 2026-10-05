@@ -342,7 +342,7 @@ namespace ClubDeportivo.Datos
         // Se intenta leer primero desde CLUBDEPORTIVO_CONNECTION_STRING o desde el archivo
         // local "clubdeportivo.connection"; si no existe, se usa esta cadena por defecto.
         private const string CADENA_POR_DEFECTO =
-            "Server=localhost;Port=3306;Database=Proyecto;Uid=root;Pwd=;SslMode=none;";
+            "Configure the database connection through a local secret or environment variable; do not commit credentials.";
 
         private MySqlConnection conexion;
 
