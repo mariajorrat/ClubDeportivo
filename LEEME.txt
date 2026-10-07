@@ -1,16 +1,41 @@
 PROYECTO INTEGRADOR - SISTEMA DE ADMINISTRACION DE UN CLUB DEPORTIVO
 =====================================================================
 
+MIGRACION TECNOLOGICA
+----------------------
+
+Esta versión es una migración del sistema original:
+
+    C# + .NET Framework 4.8 + Windows Forms + MySQL
+
+a una arquitectura más moderna y multiplataforma:
+
+    C# + .NET 10 + Avalonia UI + SQLite
+
+Además, mantiene la separación por capas:
+
+    Entidades -> Datos -> Negocio -> Interfaz Avalonia
+
+La aplicación actual crea y utiliza una base SQLite local automáticamente.
+Los datos de prueba del sistema original se cargan al inicializar la base.
+
 COMO ABRIRLO (Visual Studio 2019 o superior):
 
-1. Doble clic en ClubDeportivo/ClubDeportivo.sln
+1. Abrir `ClubDeportivo/ClubDeportivo.sln`.
 
-2. Si pide restaurar paquetes NuGet (MySql.Data), aceptar.
+2. Restaurar los paquetes NuGet si el IDE lo solicita.
 
-3. En el Explorador de Soluciones, doble clic en cualquier frmX.cs para verlo.
+3. Ejecutar el proyecto `ClubDeportivo`.
 
-4. Ejecutar proyecto_club.sql en MySQL antes de F5.
-----------------------------------------------
+La base SQLite se guarda junto con la salida de compilación como
+`clubdeportivo.db`. También se puede indicar otra ubicación mediante la
+variable de entorno `CLUBDEPORTIVO_DATABASE_PATH`.
 
-No se incluyen usuarios ni contraseñas predeterminadas.
-Crear el primer administrador mediante el flujo seguro de alta de usuarios.
+USUARIOS DE PRUEBA
+------------------
+
+    Usuario          Contraseña    Rol
+    admin            admin123      Administrador
+    recepcion        recep123      Recepcionista
+    profesor1        prof123       Profesor
+    nutricionista1   nutri123      Nutricionista
