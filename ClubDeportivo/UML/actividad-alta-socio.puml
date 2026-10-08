@@ -1,0 +1,23 @@
+@startuml
+title Club Deportivo - Actividad: alta de socio
+
+start
+:Recepcionista ingresa los datos del socio;
+if (¿Datos completos?) then (no)
+  :Mostrar error;
+  stop
+else (sí)
+endif
+
+if (¿DNI ya existe?) then (sí)
+  :Rechazar alta:\nsocio duplicado;
+  stop
+else (no)
+endif
+
+:Crear Persona en SQLite;
+:Crear Socio en SQLite;
+:Emitir carnet;
+:Informar alta exitosa;
+stop
+@enduml

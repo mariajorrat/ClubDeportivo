@@ -1,0 +1,25 @@
+@startuml
+title Club Deportivo - Secuencia: cobrar cuota
+autonumber
+
+actor Recepcionista
+participant "MainWindow\n(módulo Cuotas)" as UI
+participant CuotaNegocio as Negocio
+participant CuotaDAO as DAO
+database "clubdeportivo.db\n(SQLite)" as DB
+
+Recepcionista -> UI : Ingresa ID de socio,\nmonto y forma de pago
+UI -> Negocio : CobrarCuota(idSocio, monto,\nformaPago, cuotasTarjeta)
+Negocio -> Negocio : Validar monto y forma de pago
+Negocio -> DAO : CobrarCuota(idSocio, monto,\nformaPago, cuotasTarjeta)
+DAO -> DB : INSERT INTO cuota (...)
+DB --> DAO : Operación exitosa
+DAO --> Negocio : Fecha de vencimiento
+Negocio --> UI : Fecha de vencimiento
+UI --> Recepcionista : Muestra "Cuota cobrada"
+
+note over Negocio
+Con tarjeta se admiten 3 o 6 cuotas.
+En efectivo, cuotasTarjeta se guarda como NULL.
+end note
+@enduml

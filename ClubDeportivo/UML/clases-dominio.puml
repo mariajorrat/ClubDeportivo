@@ -1,0 +1,174 @@
+@startuml
+title Club Deportivo - Diagrama de clases del dominio
+hide empty members
+skinparam classAttributeIconSize 0
+
+abstract class Persona {
+  +Id : int
+  +Nombre : string
+  +Apellido : string
+  +Dni : string
+  +FechaNacimiento : DateTime
+  +Telefono : string
+  +Direccion : string
+  +Email : string
+  +NombreCompleto : string
+  +Edad : int
+}
+
+class Usuario {
+  +IdUsuario : int
+  +NombreUsuario : string
+  +ContrasenaHash : string
+  +Rol : string
+  +IdPersona : int?
+  +Activo : bool
+}
+
+class Socio {
+  +IdSocio : int
+  +NroSocio : string
+  +FechaAlta : DateTime
+  +AptoFisico : bool
+  +Estado : string
+  +CarnetEntregado : bool
+  +UltimoVencimiento : DateTime?
+  +CuotaAlDia : bool
+}
+
+class NoSocio {
+  +IdNoSocio : int
+  +ActividadRealizada : string
+  +FechaVisita : DateTime
+  +MontoPagado : decimal
+}
+
+class Profesor {
+  +IdProfesor : int
+  +Legajo : string
+  +Especialidad : string
+  +Tipo : string
+  +HorariosAsignados : string
+}
+
+class Actividad {
+  +IdActividad : int
+  +Nombre : string
+  +Tipo : string
+  +CostoNoSocio : decimal
+  +Horario : string
+  +CupoMaximo : int
+  +IdProfesor : int?
+}
+
+class Inscripcion {
+  +IdInscripcion : int
+  +IdPersona : int
+  +IdActividad : int
+  +Fecha : DateTime
+  +Tipo : string
+  +AptoFisico : bool
+  +MontoPagado : decimal
+}
+
+class Cuota {
+  +IdCuota : int
+  +IdSocio : int
+  +Mes : int
+  +Anio : int
+  +Monto : decimal
+  +FechaVencimiento : DateTime
+  +FechaPago : DateTime?
+  +FormaPago : string
+  +CuotasTarjeta : int?
+}
+
+class Carnet {
+  +IdCarnet : int
+  +IdSocio : int
+  +FechaEmision : DateTime
+  +FechaVencimiento : DateTime
+}
+
+class ConsultaNutricion {
+  +IdConsulta : int
+  +IdSocio : int
+  +Fecha : DateTime
+  +Hora : TimeSpan
+  +Turno : int
+  +Observaciones : string
+  +CargaActividadPermitida : string
+}
+
+class Rutina {
+  +IdRutina : int
+  +IdProfesor : int
+  +IdSocio : int
+  +Descripcion : string
+  +Fecha : DateTime
+}
+
+class AsistenciaProfesor {
+  +IdAsistencia : int
+  +IdProfesor : int
+  +Fecha : DateTime
+  +HoraEntrada : TimeSpan
+}
+
+class Sueldo {
+  +IdSueldo : int
+  +IdProfesor : int
+  +Mes : int
+  +Anio : int
+  +Monto : decimal
+  +FechaPago : DateTime?
+}
+
+enum RolUsuario {
+  Administrador
+  Recepcionista
+  Profesor
+  Nutricionista
+}
+
+enum EstadoSocio {
+  Activo
+  Inactivo
+}
+
+enum FormaPago {
+  Efectivo
+  Tarjeta
+}
+
+enum TipoProfesor {
+  Titular
+  Suplente
+}
+
+Persona <|-- Socio
+Persona <|-- NoSocio
+Persona <|-- Profesor
+Usuario "0..*" --> "0..1" Persona : corresponde a
+Usuario ..> RolUsuario : usa
+Socio "1" -- "0..*" Cuota : abona
+Socio "1" -- "0..1" Carnet : posee
+Socio "1" -- "0..*" ConsultaNutricion : solicita
+Socio "1" -- "0..*" Rutina : recibe
+Profesor "1" -- "0..*" Actividad : dicta
+Profesor "1" -- "0..*" Rutina : confecciona
+Profesor "1" -- "0..*" AsistenciaProfesor : registra
+Profesor "1" -- "0..*" Sueldo : percibe
+Persona "1" -- "0..*" Inscripcion : realiza
+Actividad "1" -- "0..*" Inscripcion : recibe
+NoSocio "0..*" --> "1" Actividad : realiza
+Socio ..> EstadoSocio : usa
+Cuota ..> FormaPago : usa
+Profesor ..> TipoProfesor : usa
+
+note bottom of Persona
+La herencia coincide con el código C#.
+Las asociaciones con IdSocio, IdProfesor e IdActividad
+se materializan mediante identificadores y DAO.
+end note
+@enduml

@@ -1,0 +1,60 @@
+@startuml
+title Club Deportivo - Diagrama de casos de uso
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Administrador" as Admin
+actor "Recepcionista" as Recepcion
+actor "Profesor" as Profesor
+actor "Nutricionista" as Nutri
+
+rectangle "Sistema Club Deportivo" {
+  usecase "Iniciar sesión" as Login
+  usecase "Gestionar socios" as Socios
+  usecase "Registrar visita\nde no socio" as NoSocios
+  usecase "Emitir carnet" as Carnet
+  usecase "Cobrar cuota" as Cuota
+  usecase "Consultar vencimientos" as Vencimientos
+  usecase "Gestionar profesores" as Profesores
+  usecase "Gestionar actividades" as Actividades
+  usecase "Registrar asistencia" as Asistencia
+  usecase "Gestionar rutinas" as Rutinas
+  usecase "Gestionar turnos de nutrición" as Nutricion
+  usecase "Liquidar sueldos" as Sueldos
+  usecase "Generar reportes" as Reportes
+}
+
+Admin -- Login
+Admin -- Socios
+Admin -- NoSocios
+Admin -- Carnet
+Admin -- Cuota
+Admin -- Vencimientos
+Admin -- Profesores
+Admin -- Actividades
+Admin -- Asistencia
+Admin -- Rutinas
+Admin -- Nutricion
+Admin -- Sueldos
+Admin -- Reportes
+
+Recepcion -- Login
+Recepcion -- Socios
+Recepcion -- NoSocios
+Recepcion -- Carnet
+Recepcion -- Cuota
+Recepcion -- Vencimientos
+Recepcion -- Reportes
+
+Profesor -- Login
+Profesor -- Asistencia
+Profesor -- Rutinas
+
+Nutri -- Login
+Nutri -- Nutricion
+
+note right of Admin
+El administrador tiene acceso a todos
+los módulos de la aplicación.
+end note
+@enduml
